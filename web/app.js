@@ -59,7 +59,6 @@ function build(l) {
   track.replaceChildren();
   document.documentElement.style.setProperty("--cols", l.grid[0]);
   document.documentElement.style.setProperty("--rows", l.grid[1]);
-  document.body.classList.toggle("view-only", !canAct());
   applyLook();
   l.pages.forEach((p, pi) => {
     const pg = h("div", "page");
@@ -138,10 +137,23 @@ function go(k, animate = true) {
     pg.inert = j !== k; // offscreen tiles take no focus or taps
     if (j === k && animate && dir) {
       pg.style.setProperty("--dir", dir);
+      if (pg._enterDone) pg._enterDone(); // a turn still animating
       pg.classList.remove("enter");
       void pg.offsetWidth;
       pg.classList.add("enter");
-      setTimeout(() => pg.classList.remove("enter"), 1400);
+      // Widgets trail in one after another (--i × 35ms); drop the class when
+      // the last one has finished, however many the page has.
+      const ws = pg.querySelectorAll(".w"), last = ws[ws.length - 1];
+      const onEnd = (e) => { if (e.target === last && e.animationName === "trail") done(); };
+      const done = () => {
+        clearTimeout(pg._enterT);
+        if (last) last.removeEventListener("animationend", onEnd);
+        pg._enterDone = null;
+        pg.classList.remove("enter");
+      };
+      pg._enterDone = done;
+      if (last) last.addEventListener("animationend", onEnd);
+      pg._enterT = setTimeout(done, 900 + ws.length * 35 + 200); // no animation (reduced motion)
     }
   });
   const pn = $("pn");

@@ -355,7 +355,6 @@ W.buttons = {
     i.grid = h("div", "btns");
     if (!canAct()) {
       // A view-only token: the server would refuse (403), so offer nothing.
-      i.el.classList.add("locked");
       i.grid.append(h("p", "empty", "这个访问令牌只能查看，不能执行操作"));
     } else for (const a of i.w.actions || []) i.grid.append(actionButton(a, "", null, "big").el);
     i.body.append(i.grid);

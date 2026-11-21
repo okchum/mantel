@@ -160,6 +160,7 @@ export function openSheet({ title, sub, actions, param }) {
   sheet.querySelector("h3").textContent = title || "";
   sheet.querySelector(".sub").textContent = sub || "";
   sheet.querySelector(".acts").replaceChildren(...actions.map((a) => actionButton(a, param, null, "wide").el));
+  cancelHide();
   sheet.hidden = false;
   requestAnimationFrame(() => requestAnimationFrame(() => {
     sheet.classList.add("open");
@@ -172,7 +173,24 @@ export function closeSheet() {
   const back = sheet._back;
   sheet._back = null;
   if (back && back.isConnected && sheet.contains(document.activeElement)) back.focus({ preventScroll: true });
-  setTimeout(() => { if (!sheet.classList.contains("open")) sheet.hidden = true; }, 380);
+  // Hide once the panel has slid out: on its transitionend, or after the
+  // CSS duration if that never fires (reduced motion, tab in background).
+  const panel = sheet.querySelector(".panel");
+  const ms = (parseFloat(getComputedStyle(panel).transitionDuration) || 0) * 1000;
+  panel.addEventListener("transitionend", onPanelEnd);
+  hideTimer = setTimeout(hideClosed, ms + 100);
+}
+let hideTimer = 0;
+function onPanelEnd(e) {
+  if (e.target === e.currentTarget && e.propertyName === "transform") hideClosed();
+}
+function cancelHide() {
+  clearTimeout(hideTimer);
+  sheet.querySelector(".panel").removeEventListener("transitionend", onPanelEnd);
+}
+function hideClosed() {
+  cancelHide();
+  if (!sheet.classList.contains("open")) sheet.hidden = true;
 }
 sheet.querySelector(".scrim").addEventListener("click", closeSheet);
 sheet.querySelector(".close").addEventListener("click", closeSheet);
