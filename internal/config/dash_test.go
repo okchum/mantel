@@ -370,3 +370,18 @@ func TestRotateQuietIsNormalized(t *testing.T) {
 		}
 	}
 }
+
+func TestExecEnvExpandsPrefixedValues(t *testing.T) {
+	// "$HOME/bin:$PATH" used to be read as one variable name and silently
+	// became "" (mantel-kit v0.2.0 expands it in place).
+	t.Setenv("MANTEL_T_BASE", "/opt/x")
+	c, err := loadCfg(t, `{"sources":[{"name":"a","type":"exec","command":["true"],
+		"env":{"P":"$MANTEL_T_BASE/bin:/usr/bin","Q":"${MANTEL_T_BASE}/q","R":"$MANTEL_T_BASE"}}]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := c.Sources[0].Env
+	if env["P"] != "/opt/x/bin:/usr/bin" || env["Q"] != "/opt/x/q" || env["R"] != "/opt/x" {
+		t.Fatalf("env = %v", env)
+	}
+}
