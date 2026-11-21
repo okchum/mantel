@@ -86,6 +86,7 @@ func RunCommand(ctx context.Context, command []string, dir string, env map[strin
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
+	killGroup(cmd)
 	cmd.Dir = dir
 	cmd.Env = os.Environ()
 	for k, v := range env {
