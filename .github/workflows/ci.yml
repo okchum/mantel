@@ -1,0 +1,40 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - name: vet
+        run: go vet ./...
+      - name: test
+        run: go test -race ./...
+      - name: build (all release platforms)
+        run: make dist
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The page's modules: a name used but not imported fails only at run time.
+      - name: eslint (web)
+        run: npx --yes eslint@9 -c web/eslint.config.mjs web
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          # Pinned: a new release adds checks and would fail unchanged code.
+          version: v2.15.0
+      # Unpinned on purpose: the vulnerability database changes daily.
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...

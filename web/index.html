@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<!-- the page URL carries the access token (?k=): never send it to other origins -->
+<meta name="referrer" content="same-origin">
+<title>Dashboard</title>
+<link rel="preload" href="fonts/BigShouldersDisplay.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="app.css">
+</head>
+<body class="booting">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#74d6b6" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#74d6b6" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+</svg>
+<main id="stage"><div id="track"></div></main>
+<footer id="chrome">
+  <span class="left"></span>
+  <div class="mid"><span id="pn"></span><nav id="dots" aria-label="页面"></nav></div>
+  <span id="upd"></span>
+</footer>
+<div id="sheet" class="sheet" hidden>
+  <div class="scrim"></div>
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <h3 id="sheet-title"></h3>
+    <p class="sub"></p>
+    <div class="acts"></div>
+    <button class="close" type="button">关闭</button>
+  </div>
+</div>
+<div id="offline" role="status" hidden></div>
+<div id="toasts" aria-live="polite"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

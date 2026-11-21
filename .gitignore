@@ -1,0 +1,7 @@
+/mantel
+/dist/
+/.cache/
+config.json
+/state.json
+.DS_Store
+/.memsearch/

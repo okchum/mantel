@@ -1,0 +1,220 @@
+{
+  "title": "Home",
+  "listen": ":8080",
+  "timezone": "Pacific/Auckland",
+  "public_url": "",
+  "state_file": "state.json",
+
+  "tokens": [
+    { "name": "nesthub", "token": "$MANTEL_TOKEN_NESTHUB", "scopes": ["act"] },
+    { "name": "phone", "token": "$MANTEL_TOKEN_PHONE", "scopes": ["act"] },
+    { "name": "edge", "token": "$MANTEL_TOKEN_EDGE", "scopes": ["push"] },
+    { "name": "tv", "token": "$MANTEL_TOKEN_TV" }
+  ],
+
+  "cast": {
+    "enabled": true,
+    "device": "Nest Hub Max",
+    "check_interval": "30s",
+    "take_over": false,
+    "quiet": "auto",
+    "quiet_hours": "23:30-07:00"
+  },
+
+  "alerts": {
+    "bark": { "key": "$BARK_KEY" },
+    "after": "2m"
+  },
+
+  "plans": {
+    "cliproxy": { "url": "https://cpa.example.com", "key": "$CPA_MANAGEMENT_KEY" },
+    "interval": "2m",
+    "alert_at": 90,
+    "expiry_alert": "24h"
+  },
+
+  "interval": "5s",
+  "servers": [
+    { "name": "nas", "url": "http://192.168.1.10:9100/metrics", "actions": ["reboot"] },
+    { "name": "homelab", "url": "http://192.168.1.20:9100/metrics", "mount": "/" }
+  ],
+
+  "calendars": [
+    { "name": "个人", "url": "https://calendar.google.com/calendar/ical/xxxx%40gmail.com/private-xxxxxxxx/basic.ics", "color": "#f5a97f" },
+    { "name": "家庭", "url": "webcal://p01-caldav.icloud.com/published/2/xxxxxxxx", "color": "#9ccf8f" }
+  ],
+
+  "weather": { "name": "Auckland", "latitude": -36.85, "longitude": 174.76 },
+
+  "probes": [
+    { "name": "Blog", "url": "https://example.com/" },
+    { "name": "Router", "url": "https://192.168.1.1/", "insecure": true, "interval": "1m" }
+  ],
+
+  "quotas": [
+    { "name": "DeepSeek", "provider": "deepseek", "api_key": "$DEEPSEEK_API_KEY", "alert_below": 10 },
+    { "name": "OpenRouter", "provider": "openrouter", "api_key": "$OPENROUTER_API_KEY" },
+    {
+      "name": "Relay",
+      "provider": "http",
+      "url": "https://relay.example.com/api/user/self",
+      "headers": { "Authorization": "Bearer $RELAY_TOKEN" },
+      "value": "data.quota",
+      "unit": "$",
+      "mode": "remaining",
+      "actions": ["relay-reset"]
+    }
+  ],
+
+  "sources": [
+    {
+      "name": "power",
+      "type": "http_json",
+      "url": "http://homeassistant.local:8123/api/states/sensor.house_power",
+      "headers": { "Authorization": "Bearer $HA_TOKEN" },
+      "interval": "10s",
+      "alerts": [{ "title": "用电", "path": "state", "above": 4000, "after": "5m" }]
+    },
+    {
+      "name": "climate",
+      "type": "http_json",
+      "url": "http://192.168.1.10:8000/climate.json",
+      "interval": "1m"
+    },
+    {
+      "name": "containers",
+      "type": "exec",
+      "command": ["docker", "ps", "-a", "--format", "{{json .}}"],
+      "interval": "30s"
+    },
+    {
+      "name": "github",
+      "type": "http_json",
+      "url": "https://api.github.com/repos/you/project",
+      "headers": { "Authorization": "Bearer $GITHUB_TOKEN" },
+      "interval": "10m"
+    },
+    {
+      "name": "backup",
+      "type": "push",
+      "stale_after": "26h",
+      "alerts": [{ "title": "备份", "path": "status", "not": "ok" }]
+    },
+    { "name": "todo", "type": "push" },
+    { "name": "notes", "type": "push" }
+  ],
+
+  "actions": [
+    {
+      "name": "relay-reset",
+      "title": "重置额度",
+      "type": "http",
+      "url": "https://relay.example.com/api/user/reset",
+      "headers": { "Authorization": "Bearer $RELAY_TOKEN" },
+      "confirm": "hold",
+      "cooldown": "1m",
+      "refresh": ["quota:Relay"],
+      "notify": true
+    },
+    {
+      "name": "living-light",
+      "title": "客厅灯",
+      "type": "http",
+      "url": "http://homeassistant.local:8123/api/services/light/toggle",
+      "headers": { "Authorization": "Bearer $HA_TOKEN", "Content-Type": "application/json" },
+      "body": "{\"entity_id\": \"light.living_room\"}",
+      "confirm": "none",
+      "cooldown": "1s",
+      "refresh": ["power"]
+    },
+    {
+      "name": "container-restart",
+      "title": "重启",
+      "type": "exec",
+      "command": ["docker", "restart", "{param}"],
+      "param": { "pattern": "[a-z0-9][a-z0-9_.-]*" },
+      "timeout": "1m",
+      "refresh": ["containers"]
+    },
+    {
+      "name": "reboot",
+      "title": "重启服务器",
+      "type": "http",
+      "url": "http://192.168.1.10:9000/hooks/reboot",
+      "headers": { "X-Token": "$WEBHOOK_TOKEN" },
+      "confirm": "hold",
+      "cooldown": "10m",
+      "notify": true
+    }
+  ],
+
+  "display": {
+    "home": "main",
+    "idle_return": "90s",
+    "rotate": "",
+    "rotate_quiet": "23:00-07:00",
+    "text_size": "medium",
+    "theme": "petrol",
+    "theme_night": ""
+  },
+
+  "pages": [
+    {
+      "name": "main",
+      "title": "总览",
+      "widgets": [
+        { "type": "clock", "at": [0, 0, 4, 2] },
+        { "type": "weather", "at": [0, 2, 4, 2] },
+        { "type": "agenda", "title": "日程", "at": [0, 4, 4, 4] },
+        { "type": "servers", "at": [4, 0, 8, 5] },
+        { "type": "probes", "title": "服务", "at": [4, 5, 4, 3] },
+        { "type": "quotas", "title": "AI 额度", "at": [8, 5, 4, 3] }
+      ]
+    },
+    {
+      "name": "home",
+      "title": "家里",
+      "widgets": [
+        { "type": "stat", "title": "当前功率", "source": "power", "value": "state", "unit": "W", "format": "int",
+          "warn": 3000, "crit": 4500, "trend": true, "window": "30m", "at": [0, 0, 3, 2] },
+        { "type": "gauge", "title": "室内湿度", "source": "climate", "value": "humidity", "max_value": 100,
+          "unit": "%", "warn": 65, "crit": 75, "at": [3, 0, 3, 2] },
+        { "type": "timeseries", "title": "温度", "source": "climate", "unit": "°", "window": "6h", "at": [6, 0, 6, 4],
+          "series": [
+            { "label": "客厅", "value": "living", "color": "sodium" },
+            { "label": "室外", "value": "outdoor", "color": "sky" }
+          ] },
+        { "type": "status", "title": "容器", "source": "containers", "items": "items", "label": "Names",
+          "state": "State", "detail": "Image", "param": "Names", "item_actions": ["container-restart"], "at": [0, 2, 6, 3] },
+        { "type": "list", "title": "备份", "source": "backup", "items": "jobs", "at": [6, 4, 3, 4] },
+        { "type": "buttons", "title": "快捷", "actions": ["living-light"], "at": [9, 4, 3, 4] },
+        { "type": "image", "title": "门口", "url": "http://192.168.1.30/snapshot.jpg", "refresh": "10s", "at": [0, 5, 6, 3] }
+      ]
+    },
+    {
+      "name": "work",
+      "title": "工作",
+      "template": "kpi",
+      "widgets": [
+        { "slot": "k1", "type": "stat", "title": "GitHub stars", "source": "github", "value": "stargazers_count",
+          "trend": true, "window": "24h" },
+        { "slot": "k2", "type": "stat", "title": "Open issues", "source": "github", "value": "open_issues_count" },
+        { "slot": "k3", "type": "countdown", "title": "发布", "to": "2026-12-15T10:00" },
+        { "slot": "main", "type": "list", "title": "待办", "source": "todo", "limit": 8 },
+        { "slot": "side", "type": "text", "title": "留言板", "source": "notes", "size": "l" }
+      ]
+    },
+    {
+      "name": "more",
+      "title": "更多",
+      "auto": true,
+      "widgets": [
+        { "type": "probes", "title": "服务" },
+        { "type": "plans", "title": "订阅用量", "span": [6, 4] },
+        { "type": "quotas", "title": "API 余额" },
+        { "type": "stat", "title": "Forks", "source": "github", "value": "forks_count" },
+        { "type": "list", "title": "备份", "source": "backup", "items": "jobs", "span": [6, 3] }
+      ]
+    }
+  ]
+}
