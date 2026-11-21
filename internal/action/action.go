@@ -48,6 +48,7 @@ type Runner struct {
 	// Kick re-runs a collector after success (collect.Kick).
 	Kick func(name string) bool
 	// Notify, if set and the action asks for it, reports the result (Bark).
+	// It runs in the background, after the reply; bound it with a timeout.
 	Notify func(title, body string)
 	// Demo handles type "demo" actions; returns the message to show.
 	Demo func(name, param string) (string, error)
@@ -66,8 +67,8 @@ type Runner struct {
 	wg      sync.WaitGroup
 }
 
-// Shutdown refuses new runs and waits up to timeout for running ones to
-// finish. It reports whether everything finished in time.
+// Shutdown refuses new runs and waits up to timeout for running ones (and
+// their notifications) to finish. It reports whether everything finished in time.
 func (r *Runner) Shutdown(timeout time.Duration) bool {
 	r.mu.Lock()
 	r.closed = true
@@ -181,7 +182,14 @@ func (r *Runner) Run(name, param, by string) (state.ActionResult, error) {
 		if !res.OK {
 			status = "失败"
 		}
-		r.Notify(a.Title+" "+status, res.Message)
+		// The reply does not wait for the push service (Bark may take its
+		// whole timeout); Shutdown waits for it like for a run.
+		title, body := a.Title+" "+status, res.Message
+		r.wg.Add(1)
+		go func() {
+			defer r.wg.Done()
+			r.Notify(title, body)
+		}()
 	}
 	return res, nil
 }

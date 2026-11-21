@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -411,8 +412,13 @@ func TestRunKickAndNotify(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if !r.Shutdown(5 * time.Second) {
+		t.Fatal("notifications did not finish")
+	}
 	mu.Lock()
 	defer mu.Unlock()
+	// Notifications are sent in the background, so in any order.
+	slices.SortFunc(notes, func(a, b note) int { return strings.Compare(b.title, a.title) })
 	if strings.Join(kicked, ",") != "quota:ds,weather,s" {
 		t.Errorf("kicked = %v (failed runs must not kick)", kicked)
 	}
@@ -466,5 +472,43 @@ func TestRunPlan(t *testing.T) {
 	}
 	if _, err := r.Run("plan-reset", "codex:../x", "t"); err != ErrParam {
 		t.Fatalf("bad key: %v", err)
+	}
+}
+
+func TestNotifyDoesNotDelayTheReply(t *testing.T) {
+	ok, _ := newServer(t, 200, `{"message":"fine"}`)
+	r := newRunner(config.Action{Name: "good", Title: "Good", Type: "http", Method: "POST", URL: ok.URL, Notify: true})
+	release := make(chan struct{})
+	sent := make(chan string, 1)
+	r.Notify = func(title, body string) {
+		<-release // a push service that hangs
+		sent <- title
+	}
+	done := make(chan state.ActionResult, 1)
+	go func() {
+		res, err := r.Run("good", "", "")
+		if err != nil {
+			t.Error(err)
+		}
+		done <- res
+	}()
+	select {
+	case res := <-done:
+		if !res.OK || res.Message != "fine" {
+			t.Fatalf("res = %+v", res)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run waited for the notification")
+	}
+	// Shutdown waits for the notification still in flight.
+	if r.Shutdown(50 * time.Millisecond) {
+		t.Fatal("Shutdown must wait for a pending notification")
+	}
+	close(release)
+	if !r.Shutdown(5 * time.Second) {
+		t.Fatal("Shutdown did not see the notification finish")
+	}
+	if got := <-sent; got != "Good 完成" {
+		t.Fatalf("notified %q", got)
 	}
 }
