@@ -1,5 +1,5 @@
 /* Widgets for generic sources: stat, gauge, charts, lists, text, images, buttons. */
-import { clamp01, color, fmtNum, fmtPart, h, now, s, syncList, tickers, token, tween, ui, valueEl, windowText } from "../core.js";
+import { clamp01, color, fmtNum, fmtPart, h, now, s, syncList, tickers, token, tween, ui, valueEl, windowText, withUnit } from "../core.js";
 import { actionButton, canAct, itemTap } from "../actions.js";
 
 const W = {};
@@ -57,8 +57,11 @@ W.gauge = {
     i.el.dataset.state = d.state || "";
     i.val.set(d.value);
     i.cap.textContent = i.w.unit === "%" && max === 100 ? "" : `上限 ${fmtNum(max, i.w)}`;
-    if (!i.marked) {
-      i.marked = true;
+    // Marks sit at warn/crit relative to max; the first reading may come
+    // before the source reports a max, so redraw whenever it changes.
+    if (i.markedMax !== max) {
+      i.markedMax = max;
+      for (const m of i.svg.querySelectorAll(".mark")) m.remove();
       for (const [line, cls] of [[i.w.warn, "warn"], [i.w.crit, "crit"]]) {
         if (line == null) continue;
         const a = ((200 - 220 * clamp01(line / max)) * Math.PI) / 180;
@@ -96,8 +99,8 @@ W.timeseries = {
     const lo = vmin - rng * 0.12, hi = vmax + rng * 0.12;
     const X = (t) => ((t - tmin) / (tmax - tmin || 1)) * 400;
     const Y = (v) => 100 - ((v - lo) / (hi - lo)) * 100;
-    i.hi.textContent = has ? fmtNum(vmax, i.w) + (i.w.unit || "") : "";
-    i.lo.textContent = has ? fmtNum(vmin, i.w) + (i.w.unit || "") : "";
+    i.hi.textContent = has ? withUnit(vmax, i.w) : "";
+    i.lo.textContent = has ? withUnit(vmin, i.w) : "";
     ser.forEach((x, k) => {
       let L = i.lines[k];
       if (!L) {
@@ -132,7 +135,7 @@ W.timeseries = {
       // The dot sits at the top-left of a chart-sized box; translating the box
       // by percentages of itself moves it without layout.
       L.dot.style.transform = `translate(${(X(tl) / 4).toFixed(2)}%, ${Y(vl).toFixed(2)}%)`;
-      tween(L.val, x.last ?? vl, (v) => fmtNum(v, i.w) + (i.w.unit || ""));
+      tween(L.val, x.last ?? vl, (v) => withUnit(v, i.w));
     });
   },
 };
@@ -187,9 +190,20 @@ W.status = {
     // syncList keeps order of existing rows; re-append to follow the sort.
     const live = [...i.ol.children].filter((e) => !e.classList.contains("leave"));
     if (live.some((e, k) => e._it !== items[k])) for (const x of items) { const li = live.find((e) => e._it === x); if (li) i.ol.append(li); }
-    i.ol.classList.toggle("over", i.ol.scrollHeight > i.ol.clientHeight + 2);
+    // Measuring forces a layout: do it only when the rows changed (or are
+    // still leaving); a resize re-measures through the observer.
+    const sig = items.map((x) => `${x.label}\u0001${x.state || ""}\u0001${x.detail ?? x.value ?? ""}`).join("\u0002");
+    if (sig !== i.sig || i.ol.querySelector(".leave")) {
+      i.sig = sig;
+      measureOver(i.ol);
+    }
+    if (!i.ro && typeof ResizeObserver === "function") (i.ro = new ResizeObserver(() => measureOver(i.ol))).observe(i.ol);
   },
 };
+
+function measureOver(ol) {
+  ol.classList.toggle("over", ol.scrollHeight > ol.clientHeight + 2);
+}
 
 W.list = {
   init(i) {
@@ -213,7 +227,7 @@ W.list = {
       lb.lastChild.textContent = x.detail || "";
       badge.textContent = x.badge || "";
       badge.hidden = !x.badge;
-      if (x.num != null) tween(rv, x.num, (v) => fmtNum(v, i.w) + (i.w.unit || ""));
+      if (x.num != null) tween(rv, x.num, (v) => withUnit(v, i.w));
       else rv.textContent = x.value == null || typeof x.value === "object" ? "" : String(x.value);
     });
     i.ol.classList.toggle("is-empty", !items.length);

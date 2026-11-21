@@ -145,7 +145,9 @@ W.probes = {
       return li;
     }, (li, p) => {
       li._p = p;
-      li.className = "probe " + (!p.checked ? "pending" : !p.up ? "down" : p.latency_ms > 800 ? "slow" : "");
+      // classList, not className: syncList's "enter"/"leave" must survive.
+      const st = !p.checked ? "pending" : !p.up ? "down" : p.latency_ms > 800 ? "slow" : "";
+      for (const c of ["pending", "down", "slow"]) li.classList.toggle(c, c === st);
       setTap(li, !!p.actions && canAct());
       let ms;
       if (!p.checked) ms = "…";
@@ -188,7 +190,8 @@ W.quotas = {
       n.replaceChildren(q.name, h("small", null, sub));
       const low = !used && ((q.limit && q.value / q.limit < 0.15) || (q.spent_24h > 0 && q.value / q.spent_24h < 3));
       const acts = q.actions && canAct();
-      li.className = "quota" + (q.error && !q.updated ? " err" : low ? " low" : "");
+      const st = q.error && !q.updated ? "err" : low ? "low" : "";
+      for (const c of ["err", "low"]) li.classList.toggle(c, c === st);
       setTap(li, !!acts);
       v.firstChild.textContent = q.unit || "";
       tween(v.lastChild, q.value, money, 900);

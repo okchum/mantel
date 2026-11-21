@@ -4,7 +4,7 @@
 const browser = [
   "AbortController", "AbortSignal", "DOMException", "Element", "URLSearchParams",
   "addEventListener", "clearTimeout", "console", "document", "fetch", "getComputedStyle",
-  "location", "performance", "requestAnimationFrame", "setInterval", "setTimeout",
+  "location", "performance", "requestAnimationFrame", "ResizeObserver", "setInterval", "setTimeout",
   "cast", // the Cast receiver SDK, loaded in receiver mode
 ];
 

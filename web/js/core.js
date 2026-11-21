@@ -124,6 +124,11 @@ export function fmtNum(v, w = {}) {
   }
   return v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
 }
+// Text form of a number with its unit, placed like valueEl places it.
+export function withUnit(v, w = {}) {
+  const t = fmtNum(v, w), unit = w.unit || "";
+  return PREFIX_UNIT.test(unit) ? unit + t : t + unit;
+}
 // A number with its unit: currency symbols in front, everything else after.
 export function valueEl(w) {
   const el = h("span", "val num");
