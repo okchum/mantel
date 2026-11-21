@@ -49,19 +49,19 @@ Mantel 只负责页面和数据，任何浏览器打开 `http://<服务器>:8080
 ```json
 "tokens": [
   { "name": "nesthub", "token": "$MANTEL_TOKEN_NESTHUB" },
-  { "name": "iphone",  "token": "$IPHONE_TOKEN" }
+  { "name": "phone",   "token": "$MANTEL_TOKEN_PHONE" }
 ]
 ```
 - 每个显示端一个，作废其中一个不影响别的。
 - `scopes`：默认只能看。`"act"` 能执行操作（按钮），`"push"` 能往推送型数据源写数据。比如给 Nest Hub 和手机 `["act"]`，给电视只读，给家里的推送脚本 `["push"]`。
-- 没配 `tokens` 时：谁都能看；操作和推送只接受局域网/本机直接来的请求（经过反代、带 `X-Forwarded-For` 的不算）。`"$NAME"` 读环境变量，不用把令牌写进文件。
+- 没配 `tokens` 时：谁都能看；操作和推送只接受局域网/本机直接来的请求。带 `X-Forwarded-For`、`Forwarded`、`X-Real-IP`、`Via`、`X-Forwarded-Host`、`X-Forwarded-Proto` 任何一个头的请求算经过反代，不算直接来的。`"$NAME"` 读环境变量，不用把令牌写进文件。
 - 访问 `/?k=令牌` 会写入 cookie（HttpOnly，HTTPS 下带 Secure，有效期约 400 天），之后书签不带 `k` 也能打开；页面请求数据时也会把 `k` 放进 `Authorization` 头，所以设备不存 cookie 也没关系。
 - 脚本或以后的 iOS App：`curl -H "Authorization: Bearer 令牌" https://…/api/v1/state`。
 - 只有页面本身和 `/api/` 需要令牌；JS、CSS、字体、`/healthz` 不含数据，是公开的。
 - 被拒绝的请求会打日志（`access: denied …`），带令牌打开页面也会记一条是哪个令牌、从哪个 IP（图片组件带 `?k=` 定时刷新，同一令牌每 10 分钟最多记一条）。
 - `tokens` 为空表示不设防，只适合家里局域网。
 - 不设防时只接受这些 `Host`：IP 地址、`localhost`、不带点的主机名、`.local`/`.lan`/`.home.arpa`/`.internal`/`.localhost` 结尾的名字、`public_url` 里的主机名，以及 `"allowed_hosts": ["dash.example.com", "*.example.com"]` 里列出的（通配符至少要带两级，`"*.com"` 会被拒绝）；其他一律返回 421。这是为了挡住 DNS rebinding：恶意网页把自己的域名解析到你的局域网 IP，浏览器就会把它当成同源，而请求又来自局域网，能按按钮。
-- 同一台机器上的隧道（`ssh -R`、某些内网穿透）转发进来的请求看起来就是本机发的；要这样暴露到外网，请配置 `tokens`。
+- 同一台机器上的反代（nginx、Caddy）和隧道（`ssh -R`、某些内网穿透）转发进来的请求，来源地址都是本机。反代通常会带上面那些头，但 nginx 只写 `proxy_pass`、不加任何 `proxy_set_header` 时一个都不带，隧道也不带，外网请求就会被当成本机请求、能按按钮。只要前面有反代或隧道，就请配置 `tokens`。
 
 ## 状态持久化
 
@@ -80,7 +80,7 @@ iPhone 装 [Bark](https://apps.apple.com/app/bark-customed-notifications/id14037
 "alerts": {
   "after": "2m",
   "maintenance": ["04:55-05:20"],
-  "url": "https://hub.example.com/?k=你的iphone令牌",
+  "url": "https://hub.example.com/?k=手机（phone）的令牌",
   "bark": { "key": "$BARK_KEY", "server": "https://api.day.app", "level": "timeSensitive" }
 }
 ```
