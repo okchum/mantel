@@ -34,7 +34,7 @@ jobs:
       # The page's modules: a name used but not imported fails only at run time.
       - name: eslint (web)
         run: npx --yes eslint@9 -c web/eslint.config.mjs web
-      - uses: golangci/golangci-lint-action@v8
+      - uses: golangci/golangci-lint-action@v9
         with:
           # Pinned: a new release adds checks and would fail unchanged code.
           version: v2.15.0
