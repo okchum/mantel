@@ -61,6 +61,7 @@ func TestNormalizeDashErrors(t *testing.T) {
 		{"duplicate page", `{"pages":[{"name":"a"},{"name":"a"}]}`, []string{`pages[1]: duplicate name "a"`}},
 		{"bad home", `{"display":{"home":"zz"},"pages":[{"name":"a"}]}`, []string{`display.home: no page "zz"`}},
 		{"bad rotate_quiet", `{"display":{"rotate_quiet":"late"}}`, []string{"display.rotate_quiet"}},
+		{"empty rotate_quiet", `{"display":{"rotate_quiet":"08:00-8:00"}}`, []string{`display.rotate_quiet "08:00-8:00": empty window`}},
 		{"text sizes and themes", `{"display":{"text_size":"xlarge","theme":"paper","theme_night":"ember"}}`, nil},
 		{"bad text_size", `{"display":{"text_size":"huge"}}`, []string{`display.text_size: "huge" is not one of small, medium, large, xlarge`}},
 		{"text_size is case sensitive", `{"display":{"text_size":"Large"}}`, []string{"display.text_size"}},
@@ -347,6 +348,25 @@ func TestActionParamInWrappedShell(t *testing.T) {
 		_, err := loadCfg(t, `{"actions":[{"name":"a","type":"exec","command":`+c.cmd+`,"param":{"values":["1"]}}]}`)
 		if got := err != nil && strings.Contains(err.Error(), "shell -c script"); got != c.refused || !c.refused && err != nil {
 			t.Errorf("%s: err = %v, want refused=%v", c.cmd, err, c.refused)
+		}
+	}
+}
+
+func TestRotateQuietIsNormalized(t *testing.T) {
+	// The page only reads "HH:MM-HH:MM"; whatever ParseWindow accepts is sent
+	// in that form, so a window that validates also works on screen.
+	for in, want := range map[string]string{
+		"7:00-9:00":      "07:00-09:00",
+		" 22:00 - 8:05 ": "22:00-08:05",
+		"22:00-24:00":    "22:00-24:00",
+		"00:00-24:00":    "00:00-24:00",
+	} {
+		c, err := loadCfg(t, `{"display":{"rotate_quiet":"`+in+`"}}`)
+		if err != nil {
+			t.Fatalf("%q: %v", in, err)
+		}
+		if got := c.Display.RotateQuiet; got != want {
+			t.Errorf("%q → %q, want %q", in, got, want)
 		}
 	}
 }

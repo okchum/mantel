@@ -421,8 +421,16 @@ func (c *Config) normalizeDash() error {
 		d.IdleReturn.Duration = 90 * time.Second
 	}
 	if d.RotateQuiet != "" {
-		if _, _, err := conf.ParseWindow(d.RotateQuiet); err != nil {
+		// The page parses only the canonical "HH:MM-HH:MM" form, so the
+		// window is sent normalized ("7:00 - 9:00" → "07:00-09:00").
+		start, end, err := conf.ParseWindow(d.RotateQuiet)
+		switch {
+		case err != nil:
 			bad("display.rotate_quiet: %v", err)
+		case start == end:
+			bad("display.rotate_quiet %q: empty window", d.RotateQuiet)
+		default:
+			d.RotateQuiet = conf.FormatWindow(start, end)
 		}
 	}
 	if d.TextSize == "" {

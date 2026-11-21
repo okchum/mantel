@@ -208,6 +208,8 @@ addEventListener("keydown", (e) => {
   }
 });
 
+// win comes from the server already normalized to "HH:MM-HH:MM"; an end of
+// "24:00" (1440) means midnight, so "22:00-24:00" and "00:00-24:00" work.
 function inQuiet(win) {
   const m = /^(\d\d):(\d\d)-(\d\d):(\d\d)$/.exec(win || "");
   if (!m) return false;
