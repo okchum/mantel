@@ -393,3 +393,7 @@ api.go                   /api/v1 接口
 internal/state           共享状态 + 持久化
 web/                     页面（嵌入二进制）
 ```
+
+## 许可证
+
+[MIT](LICENSE)
