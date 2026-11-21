@@ -55,9 +55,12 @@ func tracksFor(pages []config.Page) []track {
 }
 
 // Historian samples tracked numbers into st.Hist whenever their source has
-// new data, at most about 360 samples per window, and trims old ones.
+// new data, at most about 360 samples per window, and trims old ones. Start
+// it after Restore: its first pass drops restored histories nothing charts
+// any more, also when nothing is charted at all.
 func (d *Dash) Historian(ctx context.Context, st *state.Store, tick time.Duration) {
 	if len(d.tracks) == 0 {
+		d.sample(st, time.Now()) // only prunes
 		return
 	}
 	// Sources report in during the first seconds; look often until then so

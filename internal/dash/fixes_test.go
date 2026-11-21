@@ -187,3 +187,19 @@ func TestImageRefusesOversize(t *testing.T) {
 		t.Fatal("a failed fetch must not be cached")
 	}
 }
+
+func TestHistorianPrunesRestoredHistoryWithoutTrends(t *testing.T) {
+	// The last trend widget was removed from the config: the restored history
+	// must go (persist.go promises it), not be saved back forever.
+	d := one([]config.Source{{Name: "s", Type: "push"}}, config.Widget{Type: "stat", Source: "s", Value: "v"})
+	st := newStore("s")
+	st.Update(func(s *state.Snapshot) {
+		s.Hist[HistKey("s", "v")] = []state.Sample{{At: now, V: 1}}
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d.Historian(ctx, st, time.Hour) // returns at once: nothing to track
+	if h := st.Read().Hist; len(h) != 0 {
+		t.Fatalf("orphan history kept: %v", h)
+	}
+}
