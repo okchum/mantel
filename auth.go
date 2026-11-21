@@ -142,18 +142,35 @@ type caller struct {
 
 // callerOf returns the request's caller. Without configured tokens, viewing is
 // open and acting/pushing is allowed only for direct requests from the LAN or
-// this machine (no X-Forwarded-For, so a reverse proxy in front does not count).
+// this machine: one that carries any proxy header (see proxied) came through
+// a reverse proxy, whose own address says nothing about the real client.
 func callerOf(r *http.Request) caller {
 	if t, ok := r.Context().Value(tokenKey{}).(config.Token); ok {
 		return caller{name: t.Name, scopes: t.Can}
 	}
 	local := false
-	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil && r.Header.Get("X-Forwarded-For") == "" {
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil && !proxied(r.Header) {
 		if ip := net.ParseIP(host); ip != nil {
 			local = ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
 		}
 	}
 	return caller{name: "lan", scopes: func(s string) bool { return s == config.ScopeView || local }}
+}
+
+// proxyHeaders are the headers reverse proxies add. nginx's plain proxy_pass
+// sends no X-Forwarded-For, but configs usually set X-Real-IP or
+// X-Forwarded-Proto, and Caddy sends X-Forwarded-*. A proxy that adds none of
+// them is still invisible here: configure tokens behind any proxy.
+var proxyHeaders = []string{"X-Forwarded-For", "Forwarded", "X-Real-Ip", "Via", "X-Forwarded-Host", "X-Forwarded-Proto"}
+
+// proxied reports whether a request carries any header a reverse proxy adds.
+func proxied(h http.Header) bool {
+	for _, k := range proxyHeaders {
+		if _, ok := h[k]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func gated(path string) bool {

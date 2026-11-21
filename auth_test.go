@@ -129,3 +129,37 @@ func TestOpenedLogOncePerToken(t *testing.T) {
 		t.Fatal("logs again after the window")
 	}
 }
+
+// Open mode lets direct LAN/loopback requests act. A reverse proxy on the same
+// machine connects from 127.0.0.1, so any header a proxy adds must count as
+// "came through a proxy", not only X-Forwarded-For (nginx's proxy_pass does
+// not send it by default).
+func TestCallerOfOpenModeProxyHeaders(t *testing.T) {
+	can := func(remote string, hdr ...string) bool {
+		r := httptest.NewRequest("POST", "/api/v1/action/x", nil)
+		r.RemoteAddr = remote
+		for i := 0; i+1 < len(hdr); i += 2 {
+			r.Header.Set(hdr[i], hdr[i+1])
+		}
+		return callerOf(r).scopes(config.ScopeAct)
+	}
+	for _, remote := range []string{"127.0.0.1:5000", "[::1]:5000", "192.168.1.20:5000", "10.0.0.2:5000"} {
+		if !can(remote) {
+			t.Errorf("direct request from %s must be allowed to act", remote)
+		}
+	}
+	if can("203.0.113.9:5000") {
+		t.Error("a public address must not act")
+	}
+	for _, h := range []string{"X-Forwarded-For", "Forwarded", "X-Real-IP", "Via", "X-Forwarded-Host", "X-Forwarded-Proto"} {
+		if can("127.0.0.1:5000", h, "x") {
+			t.Errorf("a request carrying %s came through a proxy and must not act", h)
+		}
+	}
+	r := httptest.NewRequest("GET", "/api/v1/state", nil)
+	r.RemoteAddr = "127.0.0.1:5000"
+	r.Header.Set("Via", "1.1 nginx")
+	if !callerOf(r).scopes(config.ScopeView) {
+		t.Error("viewing stays open behind a proxy")
+	}
+}
