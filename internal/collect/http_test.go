@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/okchum/mantel/internal/config"
+	"github.com/okchum/mantel/internal/httpx"
 	"github.com/okchum/mantel/internal/state"
 )
 
@@ -41,10 +42,10 @@ func TestRunCommandRefusesOversizeOutput(t *testing.T) {
 	}
 	// One byte more used to come back as a cut-off success parsed as {"text": …}.
 	_, err = RunCommand(ctx, []string{"head", "-c", fmt.Sprint(maxBody + 1), "/dev/zero"}, "", nil, 10*time.Second)
-	if !errors.Is(err, errTooBig) {
+	if !errors.Is(err, httpx.ErrTooBig) {
 		t.Fatalf("want errTooBig, got %v", err)
 	}
-	if _, err := runExec(ctx, []string{"head", "-c", fmt.Sprint(2 * maxBody), "/dev/zero"}, "", nil, 10*time.Second); !errors.Is(err, errTooBig) {
+	if _, err := runExec(ctx, []string{"head", "-c", fmt.Sprint(2 * maxBody), "/dev/zero"}, "", nil, 10*time.Second); !errors.Is(err, httpx.ErrTooBig) {
 		t.Fatalf("runExec: want errTooBig, got %v", err)
 	}
 }
@@ -510,7 +511,7 @@ func TestQuotaCollector(t *testing.T) {
 }
 
 func TestHTTPStatus(t *testing.T) {
-	err := fmt.Errorf("wrapped: %w", &statusError{code: 403, body: "no"})
+	err := fmt.Errorf("wrapped: %w", &httpx.StatusError{Code: 403, Body: "no"})
 	if httpStatus(err) != 403 || err.Error() != "wrapped: HTTP 403 no" {
 		t.Fatalf("%v → %d", err, httpStatus(err))
 	}

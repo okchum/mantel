@@ -2,9 +2,7 @@ package collect
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -12,6 +10,7 @@ import (
 
 	"github.com/okchum/mantel/internal/calendar"
 	"github.com/okchum/mantel/internal/config"
+	"github.com/okchum/mantel/internal/httpx"
 	"github.com/okchum/mantel/internal/state"
 )
 
@@ -104,20 +103,12 @@ func fetchCalendar(ctx context.Context, client *http.Client, c config.Calendar, 
 	if strings.HasPrefix(u, "webcal://") {
 		u = "https://" + strings.TrimPrefix(u, "webcal://")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", "github.com/okchum/mantel/1")
-	resp, err := client.Do(req)
+	resp, err := httpx.Do(ctx, client, httpx.Request{URL: u})
 	if err != nil {
 		return nil, shortErr(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-	evs, err := calendar.Parse(newCapReader(resp.Body, maxICS), loc, from, to)
+	evs, err := calendar.Parse(httpx.CapReader(resp.Body, maxICS), loc, from, to)
 	if err != nil {
 		return nil, err
 	}
@@ -133,43 +124,4 @@ func fetchCalendar(ctx context.Context, client *http.Client, c config.Calendar, 
 		})
 	}
 	return out, nil
-}
-
-// errTooBig reports a download over its size cap.
-var errTooBig = errors.New("response too large")
-
-// capReader reads at most left bytes and fails, rather than silently
-// truncating, when the body is longer.
-type capReader struct {
-	r         io.Reader
-	left, max int64
-}
-
-func newCapReader(r io.Reader, max int64) *capReader { return &capReader{r: r, left: max, max: max} }
-
-// readAll reads r whole, or fails with errTooBig past max bytes rather than
-// returning a cut-off body that would parse as something else.
-func readAll(r io.Reader, max int64) ([]byte, error) {
-	b, err := io.ReadAll(newCapReader(r, max))
-	if err != nil {
-		return nil, err
-	}
-	return b, nil
-}
-
-func (c *capReader) Read(p []byte) (int, error) {
-	if c.left <= 0 {
-		var one [1]byte
-		n, err := c.r.Read(one[:])
-		if n > 0 {
-			return 0, fmt.Errorf("%w (over %d MiB)", errTooBig, c.max>>20)
-		}
-		return 0, err
-	}
-	if int64(len(p)) > c.left {
-		p = p[:c.left]
-	}
-	n, err := c.r.Read(p)
-	c.left -= int64(n)
-	return n, err
 }

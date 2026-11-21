@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/okchum/mantel/internal/config"
+	"github.com/okchum/mantel/internal/httpx"
 	"github.com/okchum/mantel/internal/state"
 )
 
@@ -85,17 +86,6 @@ func TestSeedCalendars(t *testing.T) {
 	}
 }
 
-func TestCapReader(t *testing.T) {
-	b, err := io.ReadAll(&capReader{r: strings.NewReader("hello"), left: 5})
-	if err != nil || string(b) != "hello" {
-		t.Fatalf("%q %v", b, err)
-	}
-	_, err = io.ReadAll(&capReader{r: strings.NewReader("hello!"), left: 5})
-	if !errors.Is(err, errTooBig) {
-		t.Fatalf("want errTooBig, got %v", err)
-	}
-}
-
 func TestNodeExporterKickAndShutdown(t *testing.T) {
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -140,10 +130,30 @@ func TestFetchHTTPRefusesOversizeBody(t *testing.T) {
 	}))
 	defer srv.Close()
 	_, err := fetchHTTP(context.Background(), srv.Client(), config.Source{Name: "big", URL: srv.URL})
-	if !errors.Is(err, errTooBig) {
+	if !errors.Is(err, httpx.ErrTooBig) {
 		t.Fatalf("want errTooBig, got %v", err)
 	}
-	if b, err := get(context.Background(), srv.Client(), srv.URL, "*/*", nil); !errors.Is(err, errTooBig) || b != nil {
+	if b, err := get(context.Background(), srv.Client(), srv.URL, "*/*", nil); !errors.Is(err, httpx.ErrTooBig) || b != nil {
 		t.Fatalf("get: want errTooBig, got %d bytes, %v", len(b), err)
+	}
+}
+
+func TestFetchCalendarAcceptsAny2xx(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "gone.ics") {
+			http.Error(w, "gone", http.StatusGone)
+			return
+		}
+		w.WriteHeader(http.StatusNonAuthoritativeInfo) // a caching proxy in between
+		_, _ = io.WriteString(w, "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n")
+	}))
+	defer srv.Close()
+	now := time.Now()
+	if _, err := fetchCalendar(context.Background(), srv.Client(), config.Calendar{URL: srv.URL + "/a.ics"}, time.UTC, now, now.Add(time.Hour)); err != nil {
+		t.Fatalf("203 must be accepted: %v", err)
+	}
+	_, err := fetchCalendar(context.Background(), srv.Client(), config.Calendar{URL: srv.URL + "/gone.ics"}, time.UTC, now, now.Add(time.Hour))
+	if httpStatus(err) != http.StatusGone {
+		t.Fatalf("want a 410 status error, got %v", err)
 	}
 }

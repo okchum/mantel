@@ -7,9 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"net/url"
 	"slices"
 	"strings"
@@ -18,6 +16,7 @@ import (
 
 	"github.com/okchum/mantel/internal/collect"
 	"github.com/okchum/mantel/internal/config"
+	"github.com/okchum/mantel/internal/httpx"
 	"github.com/okchum/mantel/internal/state"
 	"github.com/okchum/mantel/internal/textutil"
 )
@@ -268,36 +267,27 @@ func runHTTP(ctx context.Context, a config.Action, param string) (string, error)
 	} else {
 		u = strings.ReplaceAll(u, "{param}", url.PathEscape(param))
 	}
-	body := strings.ReplaceAll(a.Body, "{param}", jsonEscape(param))
-	var rd io.Reader
-	if body != "" {
-		rd = strings.NewReader(body)
-	}
-	req, err := http.NewRequestWithContext(ctx, a.Method, u, rd)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("User-Agent", "github.com/okchum/mantel/1")
-	if body != "" {
-		req.Header.Set("Content-Type", "application/json")
-	}
+	headers := make(map[string]string, len(a.Headers))
 	for k, v := range a.Headers {
-		req.Header.Set(k, strings.ReplaceAll(v, "{param}", param))
+		headers[k] = strings.ReplaceAll(v, "{param}", param)
 	}
 	client := httpClient
 	if a.Insecure {
 		client = insecureClient
 	}
-	resp, err := client.Do(req)
+	// Every status comes back here: Expect decides success, and the reply's
+	// message is summarized whichever way it went.
+	resp, err := httpx.Do(ctx, client, httpx.Request{
+		Method: a.Method, URL: u, Body: strings.ReplaceAll(a.Body, "{param}", jsonEscape(param)),
+		Headers: headers, OK: func(int) bool { return true },
+	})
 	if err != nil {
-		var ue *url.Error
-		if errors.As(err, &ue) {
-			err = ue.Err
-		}
 		return "", err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	// An oversize reply cannot be summarized (its last line is cut off); the
+	// status alone then makes the message.
+	b, _ := httpx.ReadAll(resp.Body, maxReply)
 	ok := resp.StatusCode/100 == 2
 	if a.Expect != 0 {
 		ok = resp.StatusCode == a.Expect
@@ -314,6 +304,9 @@ func runHTTP(ctx context.Context, a config.Action, param string) (string, error)
 	}
 	return msg, nil
 }
+
+// maxReply caps how much of an http action's reply is read.
+const maxReply = 1 << 20
 
 // summarize picks a human message out of a response: a JSON "message"/"msg"/
 // "detail"/"error" field when there is one, else the text itself, clipped.

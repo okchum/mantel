@@ -4,15 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"mime"
-	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/okchum/mantel/internal/config"
+	"github.com/okchum/mantel/internal/httpx"
 )
 
 // imageCache holds the last fetched picture per image widget, so several
@@ -91,32 +89,21 @@ func (c *imageCache) fetch(ctx context.Context, w config.Widget, call *imageCall
 	close(call.done)
 }
 
+// maxImage caps one upstream picture; a longer one is an error, never a
+// truncated image cached for the widget's whole refresh.
+const maxImage = 8 << 20
+
 func fetchImage(ctx context.Context, w config.Widget) (cachedImage, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, w.URL, nil)
+	resp, err := httpx.Do(ctx, nil, httpx.Request{URL: w.URL, Headers: w.Headers})
 	if err != nil {
-		return cachedImage{}, err
-	}
-	for k, v := range w.Headers {
-		req.Header.Set(k, v)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		// *url.Error quotes the URL, query string (camera tokens) included.
-		var ue *url.Error
-		if errors.As(err, &ue) {
-			err = ue.Err
-		}
 		return cachedImage{}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode/100 != 2 {
-		return cachedImage{}, fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
 	ct := resp.Header.Get("Content-Type")
 	if !allowedImage(ct) {
 		return cachedImage{}, fmt.Errorf("not a raster image: %q", ct)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	body, err := httpx.ReadAll(resp.Body, maxImage)
 	if err != nil {
 		return cachedImage{}, err
 	}

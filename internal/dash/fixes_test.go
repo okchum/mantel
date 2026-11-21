@@ -2,6 +2,7 @@ package dash
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/okchum/mantel/internal/config"
+	"github.com/okchum/mantel/internal/httpx"
 	"github.com/okchum/mantel/internal/state"
 )
 
@@ -167,5 +169,21 @@ func TestImageErrorHidesURL(t *testing.T) {
 	_, _, err := imageDash(u).Image(context.Background(), "cam")
 	if err == nil || strings.Contains(err.Error(), "s3cret") || strings.Contains(err.Error(), "snap.jpg") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestImageRefusesOversize(t *testing.T) {
+	// A picture over maxImage used to be cut off and cached as a broken image.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/jpeg")
+		_, _ = w.Write(make([]byte, maxImage+1))
+	}))
+	defer srv.Close()
+	d := imageDash(srv.URL)
+	if _, _, err := d.Image(context.Background(), "cam"); !errors.Is(err, httpx.ErrTooBig) {
+		t.Fatalf("want ErrTooBig, got %v", err)
+	}
+	if _, ok := d.images.m["cam"]; ok {
+		t.Fatal("a failed fetch must not be cached")
 	}
 }

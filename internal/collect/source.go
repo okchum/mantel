@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/okchum/mantel/internal/config"
+	"github.com/okchum/mantel/internal/httpx"
 	"github.com/okchum/mantel/internal/jpath"
 	"github.com/okchum/mantel/internal/state"
 	"github.com/okchum/mantel/internal/textutil"
@@ -60,37 +61,11 @@ func Source(ctx context.Context, st *state.Store, src config.Source) {
 }
 
 func fetchHTTP(ctx context.Context, client *http.Client, src config.Source) (any, error) {
-	method := src.Method
-	if method == "" {
-		method = http.MethodGet
-	}
-	var body io.Reader
-	if src.Body != "" {
-		body = strings.NewReader(src.Body)
-	}
-	req, err := http.NewRequestWithContext(ctx, method, src.URL, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "github.com/okchum/mantel/1")
-	if src.Body != "" {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	for k, v := range src.Headers {
-		req.Header.Set(k, v)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode/100 != 2 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("HTTP %d %s", resp.StatusCode, textutil.Clip(string(b), 100))
-	}
 	// Too long is an error: a cut-off JSON body would be stored as text.
-	b, err := readAll(resp.Body, maxBody)
+	b, err := httpx.Get(ctx, client, httpx.Request{
+		Method: src.Method, URL: src.URL, Body: src.Body,
+		Accept: "application/json", Headers: src.Headers,
+	}, maxBody)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +112,7 @@ func RunCommand(ctx context.Context, command []string, dir string, env map[strin
 	}
 	// Like an oversize HTTP body: cut-off output would parse as something else.
 	if out.over {
-		return stdout.Bytes(), fmt.Errorf("%w (stdout over %d MiB)", errTooBig, maxBody>>20)
+		return stdout.Bytes(), fmt.Errorf("%w (stdout over %d MiB)", httpx.ErrTooBig, maxBody>>20)
 	}
 	return stdout.Bytes(), nil
 }

@@ -6,15 +6,13 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"sync"
 	"time"
 
-	"github.com/okchum/mantel/internal/textutil"
+	"github.com/okchum/mantel/internal/httpx"
 )
 
 // shortErr turns verbose net/url errors into something that fits on a wall display.
@@ -72,45 +70,18 @@ func NewClient(o ClientOpts) *http.Client {
 const maxBody = 4 << 20
 
 // get GETs url with headers and returns the body (a longer one than maxBody
-// is an error, not cut short); a non-2xx status is an error quoting the start of the body.
+// is an error, not cut short); a non-2xx status is an *httpx.StatusError
+// quoting the start of the body.
 func get(ctx context.Context, client *http.Client, u, accept string, headers map[string]string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", accept)
-	req.Header.Set("User-Agent", "github.com/okchum/mantel/1")
-	for k, val := range headers {
-		req.Header.Set(k, val)
-	}
-	resp, err := client.Do(req)
+	b, err := httpx.Get(ctx, client, httpx.Request{URL: u, Accept: accept, Headers: headers}, maxBody)
 	if err != nil {
 		return nil, shortErr(err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode/100 != 2 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, &statusError{code: resp.StatusCode, body: textutil.Clip(string(b), 120)}
-	}
-	return readAll(resp.Body, maxBody)
+	return b, nil
 }
-
-// statusError is a non-2xx answer; errors.As lets callers branch on the code.
-type statusError struct {
-	code int
-	body string
-}
-
-func (e *statusError) Error() string { return fmt.Sprintf("HTTP %d %s", e.code, e.body) }
 
 // httpStatus is the HTTP status behind err, or 0 when it is not a non-2xx answer.
-func httpStatus(err error) int {
-	var se *statusError
-	if errors.As(err, &se) {
-		return se.code
-	}
-	return 0
-}
+func httpStatus(err error) int { return httpx.Status(err) }
 
 // getJSON GETs url with headers and decodes the JSON body into v.
 func getJSON(ctx context.Context, client *http.Client, u string, headers map[string]string, v any) error {
