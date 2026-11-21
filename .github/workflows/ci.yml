@@ -8,23 +8,12 @@ on:
 permissions:
   contents: read
 
-env:
-  # mantel-kit is a private module: fetch it with git, not the public proxy.
-  GOPRIVATE: github.com/okchum
-
 jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      # A token that can read the private okchum repositories (a fine-grained
-      # PAT with read access to contents), for go to fetch mantel-kit.
-      - name: private modules
-        env:
-          READ_TOKEN: ${{ secrets.OKCHUM_READ_TOKEN }}
-        if: env.READ_TOKEN != ''
-        run: git config --global url."https://x-access-token:${READ_TOKEN}@github.com/okchum/".insteadOf "https://github.com/okchum/"
       - uses: actions/setup-go@v5
         with:
           # go.mod's go line is the minimum; test, build and scan with the
