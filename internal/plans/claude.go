@@ -228,7 +228,10 @@ func (s *Service) claudeReset(ctx context.Context, key string, c Cred) (string, 
 		return "", errors.New("读不到账号的组织信息")
 	}
 
-	id, retry := s.requestID(key, g.ID)
+	id, retry, err := s.requestID(key, g.ID)
+	if err != nil {
+		return "", err
+	}
 	body, _ := json.Marshal(map[string]string{"program": claudeProgram, "grant_id": g.ID, "request_id": id})
 	r, err := s.Backend.Call(ctx, c, Request{
 		Method: "POST",

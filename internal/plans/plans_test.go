@@ -332,3 +332,62 @@ func TestParseTime(t *testing.T) {
 		}
 	}
 }
+
+func TestRequestIDRefusesOtherGrantWhileInDoubt(t *testing.T) {
+	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	s := &Service{Now: func() time.Time { return now }}
+	id, retry, err := s.requestID("k", "g1")
+	if err != nil || retry || id == "" {
+		t.Fatalf("first: %q %v %v", id, retry, err)
+	}
+	// The doubtful attempt may have spent g1; a fresh read now offers g2.
+	// Spending g2 under a new id could cost a second reset.
+	now = now.Add(4 * time.Minute)
+	if got, _, err := s.requestID("k", "g2"); err == nil || got != "" || !strings.Contains(err.Error(), "还没确认") || !strings.Contains(err.Error(), "6 分钟") {
+		t.Fatalf("other grant in the window: %q %v", got, err)
+	}
+	if got, retry, err := s.requestID("k", "g1"); err != nil || !retry || got != id {
+		t.Fatalf("same grant must retry with the same id: %q %v %v", got, retry, err)
+	}
+	// Past the window a new grant gets a new id.
+	now = now.Add(retryWindow)
+	if got, retry, err := s.requestID("k", "g2"); err != nil || retry || got == "" || got == id {
+		t.Fatalf("after the window: %q %v %v", got, retry, err)
+	}
+	if _, _, err := s.requestID("other", "g9"); err != nil {
+		t.Fatalf("another account is independent: %v", err)
+	}
+}
+
+func TestCodexRetryAfterDoubtIgnoresZeroCount(t *testing.T) {
+	f, s := setup(t)
+	refresh(t, s)
+	key := "codex:codex-me.json"
+	f.resetCode = 503
+	if _, err := s.Reset(context.Background(), key); err != errDoubt {
+		t.Fatalf("err %v", err)
+	}
+	// A refresh in between shows the last reset spent.
+	zero := func() {
+		s.mu.Lock()
+		a := s.last[key]
+		a.Resets = &Resets{Available: 0}
+		s.last[key] = a
+		s.mu.Unlock()
+	}
+	zero()
+	f.resetCode, f.codexCode = 200, "already_redeemed"
+	msg, err := s.Reset(context.Background(), key)
+	if err != nil || !strings.Contains(msg, "已经生效") {
+		t.Fatalf("retry after doubt must reach upstream and report the earlier success: %q %v", msg, err)
+	}
+	n := len(f.consumes)
+	if f.consumes[n-1] != f.consumes[n-2] {
+		t.Fatalf("retry must resend the same id: %v", f.consumes)
+	}
+	// Settled: a zero count refuses without calling upstream again.
+	zero()
+	if _, err := s.Reset(context.Background(), key); err == nil || !strings.Contains(err.Error(), "没有可用的重置次数") || len(f.consumes) != n {
+		t.Fatalf("err %v consumes %d→%d", err, n, len(f.consumes))
+	}
+}

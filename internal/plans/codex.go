@@ -159,10 +159,15 @@ func (s *Service) codexReset(ctx context.Context, key string, c Cred) (string, e
 	s.mu.Lock()
 	last := s.last[key]
 	s.mu.Unlock()
-	if r := last.Resets; r != nil && r.Available == 0 {
+	// After a doubtful attempt the count may already show the reset spent:
+	// resend the same id so the answer says whether that attempt took effect.
+	if r := last.Resets; r != nil && r.Available == 0 && !s.hasPending(key) {
 		return "", errors.New("没有可用的重置次数")
 	}
-	id, retry := s.requestID(key, "codex")
+	id, retry, err := s.requestID(key, "codex")
+	if err != nil {
+		return "", err
+	}
 	body, _ := json.Marshal(map[string]string{"redeem_request_id": id})
 	r, err := s.Backend.Call(ctx, c, Request{Method: "POST", URL: codexConsumeURL, Header: codexHeader(c), Body: string(body)})
 	if err != nil {

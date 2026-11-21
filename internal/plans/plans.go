@@ -258,12 +258,20 @@ func (s *Service) Reset(ctx context.Context, key string) (string, error) {
 }
 
 // requestID returns the id to send for this account's reset: the remembered
-// one if a previous attempt ended in doubt recently, else a fresh one.
-func (s *Service) requestID(key, grant string) (id string, retry bool) {
+// one if a previous attempt ended in doubt recently, else a fresh one. A
+// doubtful attempt on a different grant still inside the retry window is
+// refused: that attempt may have spent its grant (which is why another one
+// shows up now), and spending a second one with a new id would cost twice.
+func (s *Service) requestID(key, grant string) (id string, retry bool, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if p, ok := s.pending[key]; ok && p.Grant == grant && s.now().Sub(p.At) < retryWindow {
-		return p.ID, true
+	if p, ok := s.pending[key]; ok {
+		if left := retryWindow - s.now().Sub(p.At); left > 0 {
+			if p.Grant == grant {
+				return p.ID, true, nil
+			}
+			return "", false, unconfirmed(left)
+		}
 	}
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
@@ -272,7 +280,22 @@ func (s *Service) requestID(key, grant string) (id string, retry bool) {
 		s.pending = map[string]pending{}
 	}
 	s.pending[key] = pending{ID: id, Grant: grant, At: s.now()}
-	return id, false
+	return id, false, nil
+}
+
+// hasPending reports whether a doubtful reset of the account may still be
+// retried with its remembered id.
+func (s *Service) hasPending(key string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.pending[key]
+	return ok && s.now().Sub(p.At) < retryWindow
+}
+
+// unconfirmed refuses a reset while an earlier one is still in doubt.
+func unconfirmed(left time.Duration) error {
+	mins := int((left + time.Minute - 1) / time.Minute)
+	return fmt.Errorf("上一次重置的结果还没确认，可能已经生效；为了不多花一次，请先刷新看看用量，%d 分钟后再重试", mins)
 }
 
 // settle forgets the remembered id once the outcome is known.
